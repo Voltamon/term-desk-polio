@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	// Character set for access codes (alphanumeric)
+	// Character set for access codes (alphanume wc)
 	charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	codeLength = 9
 )

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -10,40 +11,31 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// PTY Terminal TUI - A terminal interface with sidebar and command line
-
-// User represents a user in session
 type User struct {
 	name      string
 	status    string
 	connected time.Time
 }
 
-// Model represents the application state
 type Model struct {
-	// Navigation and state
 	cursor   int
 	quitting bool
 
-	// Users in session
 	users []User
 
-	// Terminal content
 	terminalContent []string
 	commandInput    string
 	inputFocused    bool
 
-	// UI dimensions
 	width  int
 	height int
 }
 
-// Initial state of the application
 func initialModel() Model {
 	return Model{
 		cursor:       0,
 		quitting:     false,
-		inputFocused: true, // Start with command input focused
+		inputFocused: true,
 		users: []User{
 			{"john_doe", "active", time.Now().Add(-time.Hour * 2)},
 			{"jane_smith", "idle", time.Now().Add(-time.Minute * 30)},
@@ -59,12 +51,10 @@ func initialModel() Model {
 	}
 }
 
-// Init returns initial commands
 func (m Model) Init() tea.Cmd {
 	return tea.EnterAltScreen
 }
 
-// Update handles messages and updates the model
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
@@ -79,7 +69,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// Handle key presses
 func (m Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "ctrl+c", "esc":
@@ -122,43 +111,39 @@ func (m Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 }
 
-// Execute command in terminal
 func (m Model) executeCommand() (tea.Model, tea.Cmd) {
 	cmd := strings.TrimSpace(m.commandInput)
 	output := ""
 
 	switch cmd {
-	case "help":
-		output = "Available commands: help, clear, users, time, exit"
 	case "clear":
 		m.terminalContent = []string{}
 		m.commandInput = ""
 		return m, nil
-	case "users":
-		output = fmt.Sprintf("Active users: %d", len(m.users))
-	case "time":
-		output = time.Now().Format("Current time: 15:04:05")
+
 	case "exit":
 		m.quitting = true
 		return m, tea.Quit
+
 	default:
-		output = fmt.Sprintf("Unknown command: %s", cmd)
+		execOutput, err := exec.Command("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", cmd).CombinedOutput()
+		if err != nil {
+			output = fmt.Sprintf("(error) %v", err)
+		} else {
+			output = string(execOutput)
+		}
 	}
 
-	// Add command and output to terminal
 	m.terminalContent = append(m.terminalContent, fmt.Sprintf("> %s", cmd))
 	if output != "" {
 		m.terminalContent = append(m.terminalContent, output)
 	}
 	m.terminalContent = append(m.terminalContent, "")
-
-	// Clear command input
 	m.commandInput = ""
 
 	return m, nil
 }
 
-// View renders the current screen
 func (m Model) View() string {
 	if m.quitting {
 		return "\n👋 Thanks for using pty-terminal!\n\n"
@@ -171,18 +156,13 @@ func (m Model) View() string {
 	return m.renderTerminalInterface()
 }
 
-// Render the complete terminal interface
 func (m Model) renderTerminalInterface() string {
-	// Calculate dimensions based on percentages
-	sidebarWidth := int(float64(m.width) * 0.20)  // 20% of screen width
-	mainAreaWidth := int(float64(m.width) * 0.80) // 80% of screen width
+	sidebarWidth := int(float64(m.width) * 0.20)
+	mainAreaWidth := int(float64(m.width) * 0.80)
 
-	// Command line takes exactly 1 line + borders (3 lines total)
 	commandHeight := 3
-	// Terminal takes the remaining height
-	terminalHeight := m.height - commandHeight - 2 // Account for top/bottom borders
+	terminalHeight := m.height - commandHeight - 2
 
-	// Ensure minimum dimensions
 	if sidebarWidth < 15 {
 		sidebarWidth = 15
 	}
@@ -193,45 +173,38 @@ func (m Model) renderTerminalInterface() string {
 		terminalHeight = 5
 	}
 
-	// Create styles
-	borderStyle := lipgloss.NewStyle().
+	sidebarStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("#666666"))
-
-	// Sidebar takes full height
-	sidebarStyle := borderStyle.Copy().
-		Width(sidebarWidth-2). // Account for border
-		Height(m.height-2).    // Full height minus top/bottom borders
+		BorderForeground(lipgloss.Color("#666666")).
+		Width(sidebarWidth-2).
+		Height(m.height-2).
+		MarginRight(1).
 		Padding(1, 1)
 
-	// Terminal takes remaining height above command line
-	mainTerminalStyle := borderStyle.Copy().
-		Width(mainAreaWidth-2). // Account for border
-		Height(terminalHeight). // Account for border
+	mainTerminalStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("#666666")).
+		Width(mainAreaWidth-2).
+		Height(terminalHeight).
 		Padding(1, 2)
 
-	// Command line is exactly 1 line high
-	commandLineStyle := borderStyle.Copy().
-		Width(mainAreaWidth-2). // Account for border
-		Height(1).              // Exactly 1 line content + 2 for borders = 3 total
+	commandLineStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("#666666")).
+		Width(mainAreaWidth-2).
+		Height(1).
 		Padding(0, 0, 0)
-	// Render sidebar
+
 	sidebar := m.renderSidebar()
-
-	// Render main terminal area
-	mainTerminal := m.renderMainTerminal(terminalHeight - 4) // Account for padding and borders
-
-	// Render command line
+	mainTerminal := m.renderMainTerminal(terminalHeight - 4)
 	commandLine := m.renderCommandLine()
 
-	// Layout the right side (terminal + command line vertically)
 	rightSide := lipgloss.JoinVertical(
 		lipgloss.Left,
 		mainTerminalStyle.Render(mainTerminal),
 		commandLineStyle.Render(commandLine),
 	)
 
-	// Layout the complete interface (sidebar + right side horizontally)
 	return lipgloss.JoinHorizontal(
 		lipgloss.Top,
 		sidebarStyle.Render(sidebar),
@@ -239,7 +212,6 @@ func (m Model) renderTerminalInterface() string {
 	)
 }
 
-// Render sidebar with users
 func (m Model) renderSidebar() string {
 	titleStyle := lipgloss.NewStyle().
 		Bold(true).
@@ -270,9 +242,9 @@ func (m Model) renderSidebar() string {
 			style = selectedUserStyle
 		}
 
-		status := "•" // Active dot
+		status := "•"
 		if user.status == "idle" {
-			status = "◦" // Idle circle
+			status = "◦"
 		}
 
 		content.WriteString(fmt.Sprintf("%s %s %s\n", cursor, status, style.Render(user.name)))
@@ -281,7 +253,6 @@ func (m Model) renderSidebar() string {
 	return content.String()
 }
 
-// Render main terminal area
 func (m Model) renderMainTerminal(height int) string {
 	titleStyle := lipgloss.NewStyle().
 		Bold(true).
@@ -296,13 +267,11 @@ func (m Model) renderMainTerminal(height int) string {
 	content.WriteString(titleStyle.Render("pty-terminal"))
 	content.WriteString("\n\n")
 
-	// Calculate how many lines we can show
 	startLine := 0
 	if len(m.terminalContent) > height-3 {
 		startLine = len(m.terminalContent) - (height - 3)
 	}
 
-	// Show terminal content
 	for i := startLine; i < len(m.terminalContent); i++ {
 		content.WriteString(contentStyle.Render(m.terminalContent[i]))
 		content.WriteString("\n")
@@ -311,7 +280,6 @@ func (m Model) renderMainTerminal(height int) string {
 	return content.String()
 }
 
-// Render command line input
 func (m Model) renderCommandLine() string {
 	promptStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#00FF00")).
@@ -324,11 +292,10 @@ func (m Model) renderCommandLine() string {
 		Foreground(lipgloss.Color("#FFFFFF")).
 		Background(lipgloss.Color("#FFFFFF"))
 
-	prompt := "cmd line "
+	prompt := "> "
 	input := m.commandInput
 
 	if m.inputFocused {
-		// Add blinking cursor
 		input += cursorStyle.Render(" ")
 	}
 
@@ -336,13 +303,11 @@ func (m Model) renderCommandLine() string {
 }
 
 func main() {
-	// Create the program
 	p := tea.NewProgram(
 		initialModel(),
-		tea.WithAltScreen(), // Use alternate screen buffer
+		tea.WithAltScreen(),
 	)
 
-	// Run the program
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Error running pty-terminal: %v\n", err)
 		os.Exit(1)
