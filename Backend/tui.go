@@ -75,13 +75,13 @@ func (m Model) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.quitting = true
 		return m, tea.Quit
 
-	case "up", "k":
+	case "up":
 		if !m.inputFocused && m.cursor > 0 {
 			m.cursor--
 		}
 		return m, nil
 
-	case "down", "j":
+	case "down":
 		if !m.inputFocused && m.cursor < len(m.users)-1 {
 			m.cursor++
 		}
